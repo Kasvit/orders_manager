@@ -66,17 +66,16 @@ class Order < ActiveRecord::Base
   end
 
   def refunded_amount_in_cents
-    (refunds && refunds.pluck(:amount_in_cents).inject(:+)).to_i
+    refunds.sum(:amount_in_cents)
   end
 
   def can_refund?(amount = 0)
-    return false if available_amount_for_refunding == amount && amount == 0
-    
-    available_amount_for_refunding >= amount
+    amount = available_amount_for_refunding if amount.zero?
+    amount > 0 && available_amount_for_refunding >= amount
   end
 
   def available_amount_for_refunding
-    @available_amount_for_refunding = total_in_cents - refunded_amount_in_cents
+    total_in_cents - refunded_amount_in_cents
   end
 
   private
@@ -105,8 +104,7 @@ class Refund < ActiveRecord::Base
   end
 
   def set_refunded_status_to_orders
-    order.status = :refunded
-    order.save
+    order.update(status: :refunded)
   end
 end
 
@@ -209,5 +207,14 @@ class RefundTest < Minitest::Test
     assert_raises ActiveRecord::RecordInvalid do
       Refund.create! amount_in_cents: 17000, order: order
     end
+  end
+
+  def test_available_amount_for_refunding
+    order = Order.create! total_in_cents: 16000
+
+    order.refund! 400
+    order.reload
+
+    assert order.available_amount_for_refunding, 15600
   end
 end
